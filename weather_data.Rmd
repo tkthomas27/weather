@@ -1,0 +1,41 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(rnoaa)
+library(tidyverse)
+```
+
+
+```{r}
+
+cities1 <- ncdc_locs(locationcategoryid='CITY', sortfield='name', sortorder='asc', limit = 1000)
+cities2 <- ncdc_locs(locationcategoryid='CITY', sortfield='name', sortorder='desc', limit = 987)
+
+cities <- rbind(cities1$data, cities2$data) %>% distinct(id, .keep_all = TRUE)
+
+```
+
+
+get token; https://www.ncdc.noaa.gov/cdo-web/token
+add to rprofile
+
+```{r}
+#get info for a single city
+
+
+```
+
+
+
+
+
+use https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/
+to get the data
+ghcnd_gsn.tar.gz is us historic data
+using this for now
+downloaded and unzipped; every *.dly file is the daily file
+* need to find a way to read in each file
+* need to match each file name to id file

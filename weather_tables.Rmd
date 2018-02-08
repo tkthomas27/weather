@@ -1,0 +1,351 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(rvest)
+library(XML)
+library(tidyverse)
+library(stringr)
+library(measurements)
+
+setwd("~/github/weather")
+```
+
+Sources for lists of cities
+
+
+https://en.wikipedia.org/wiki/List_of_largest_cities
+
+https://en.wikipedia.org/wiki/List_of_United_States_cities_by_population
+
+https://en.wikipedia.org/wiki/List_of_European_cities_by_population_within_city_limits
+
+https://en.wikipedia.org/wiki/List_of_countries_by_national_capital,_largest_and_second-largest_cities
+
+
+# Get List of Cities
+
+```{r cities_lat}
+#https://dataorchid.wordpress.com/2015/06/14/web-scrapping-using-rvest-package-of-r/
+
+#url for cities by latitude
+url <- "https://en.wikipedia.org/wiki/List_of_population_centers_by_latitude"
+
+raw_links <- read_html(url) %>% 
+    html_node("table") %>%
+    html_nodes("tr") %>% 
+    html_nodes("td:nth-child(3) a") %>% #just the city column
+    html_attr("href")
+
+wiki_links <- as.data.frame(raw_links) %>% 
+    distinct(raw_links) %>% 
+    mutate(link = paste("https://en.wikipedia.org",raw_links,sep="")) %>% 
+    mutate(wiki_city = substr(raw_links, 7, 100)) %>% 
+    select(wiki_city, link)
+
+cities_lat <- read_html(url) %>% 
+    html_node("table") %>%
+    html_table() %>% 
+    cbind(wiki_links) %>% 
+    mutate(location = paste(City, `Province/State`, Country, sep = ", ")) %>% 
+    rename(lat = Latitude, lon = Longitude) %>%
+    filter(location!="Ålesund") %>% 
+    mutate(x = lat,
+           y = lon,
+           lat = trimws(gsub('[^0-9]',' ',lat)),
+           lon = trimws(gsub('[^0-9]',' ',lon))) %>% 
+    separate(lat, c("lat_deg","lat_min")) %>% 
+    separate(lon, c("lon_deg","lon_min")) %>% 
+    mutate(lat = as.numeric(lat_deg) + as.numeric(lat_min)/60,
+           lon = as.numeric(lon_deg) + as.numeric(lon_min)/60,
+           lat = case_when(str_detect(x,"S")==TRUE ~ lat*-1, TRUE ~ lat),
+           lon = case_when(str_detect(y,"W")==TRUE ~ lon*-1, TRUE ~ lon)) %>% 
+    select(location, lat, lon, link) %>% 
+    mutate(location = gsub("N/A, ", "", location))
+
+```
+
+```{r cities_us_capitals}
+#url for cities by latitude
+url1 <- "https://en.wikipedia.org/wiki/List_of_capitals_in_the_United_States"
+url2 <- "https://www.jetpunk.com/data/countries/united-states/state-capitals-list"
+
+raw_links <- read_html(url1) %>% 
+    html_node("table") %>%
+    html_nodes("tr") %>% 
+    html_nodes("td:nth-child(4) a") %>% #just the city column
+    html_attr("href")
+
+wiki_links <- as.data.frame(raw_links) %>% 
+    distinct(raw_links) %>% 
+    mutate(link = paste("https://en.wikipedia.org",raw_links,sep="")) %>% 
+    mutate(wiki_city = substr(raw_links, 7, 100)) %>% 
+    select(wiki_city, link)
+
+us_capitals <- read_html(url2) %>% 
+    html_node("table") %>%
+    html_table() %>% 
+    cbind(wiki_links)
+
+us_capitals$country <- "United States"
+
+us_capitals %<>% mutate(location = paste(Capital, State, country, sep = ", ")) %>% 
+    rename(lat = Latitude, lon = Longitude) %>% 
+    select(location, lat, lon, link)
+
+```
+
+```{r cities_world_capitals}
+url <- "https://en.wikipedia.org/wiki/List_of_capital_cities_by_elevation"
+
+raw_links <- read_html(url) %>% 
+    html_node("table") %>%
+    html_nodes("tr") %>% 
+    html_nodes("td:nth-child(2) a") %>% #just the city column
+    html_attr("href")
+
+wiki_links <- as.data.frame(raw_links) %>% 
+    distinct(raw_links) %>% 
+    mutate(link = paste("https://en.wikipedia.org",raw_links,sep="")) %>% 
+    mutate(wiki_city = substr(raw_links, 7, 100)) %>% 
+    select(wiki_city, link) 
+
+city_table0 <- read_html(url) %>% 
+    html_node("table") %>%
+    html_table() %>% 
+    inner_join(wiki_links, by = c("Capital" = "wiki_city"))
+
+#add coordinates
+url2 <- "http://www.lab.lmnixon.org/4th/worldcapitals.html"
+world_capitals <- read_html(url2) %>% 
+    html_node("table") %>% 
+    html_table(header = TRUE) %>% 
+    inner_join(city_table0, by = c("Country" = "Country")) %>% 
+    select(Country, Capital.x, Latitude, Longitude, link) %>% 
+    rename(City = Capital.x) %>% 
+    mutate(City = gsub('([A-z]+) .*', '\\1', City)) %>% 
+    rename(lat = Latitude, lon = Longitude) %>% 
+    mutate(x = lat,
+           y = lon,
+           lat = trimws(gsub('[^0-9]',' ',lat)),
+           lon = trimws(gsub('[^0-9]',' ',lon)),
+           lat = conv_unit(lat, from = 'deg_dec_min', to = 'dec_deg'),
+           lon = conv_unit(lon, from = 'deg_dec_min', to = 'dec_deg'),
+           lat = as.numeric(lat),
+           lon = as.numeric(lon),
+           lat = case_when(str_detect(x,"S")==TRUE ~ lat*-1, TRUE ~ lat),
+           lon = case_when(str_detect(y,"W")==TRUE ~ lon*-1, TRUE ~ lon)) %>% 
+    mutate(location = paste(City, Country, sep = ", ")) %>% 
+    select(location, lat, lon, link) 
+
+```
+
+```{r combine cities}
+
+city_tables <- rbind(cities_lat, us_capitals, world_capitals) %>% distinct(location, .keep_all = TRUE)
+
+write_csv(city_tables, "city_tables.csv")
+```
+
+```{python}
+import pandas as pd
+
+#get good links from r
+city_links = pd.read_csv("city_tables.csv")
+city_links.head()
+
+#define empty dataframe
+climate_columns = ['Month', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Year','location','lat','lon']
+climate_tables = pd.DataFrame(columns = climate_columns)
+climate_tables
+
+for x in range(0,len(city_links)):
+    try:
+        df = pd.read_html(city_links.loc[x,"link"], match="[Rr]ecord [Hh]igh", encoding = 'str', header = 1)[0].dropna(axis=0, how='any')
+        if list(df)[0]=="Month":
+            df['location'] = city_links.loc[x,"location"]
+            df['lat'] = city_links.loc[x,"lat"]
+            df['lon'] = city_links.loc[x,"lon"]
+            climate_tables = climate_tables.append(df, ignore_index=True)
+    except:
+        pass
+climate_tables.head()
+
+climate_tables.to_csv("climate_tables.csv")
+
+```
+
+
+
+we have good links
+need to selectively extract the right table; use pandas
+
+
+python
+python
+python
+python
+python
+
+--here need to combine multiple files
+
+
+```{r, message=FALSE}
+climate_table <- read_csv("climate_tables.csv") %>% distinct(location, Month, .keep_all = TRUE) 
+```
+
+```{r}
+climate_data <- climate_table %>% 
+    select(-X1, -Year) %>% 
+    gather(data_key, data_value, -location, -Month, -lat, -lon) %>% 
+    rename(month = data_key,
+           data_key = Month) %>% 
+    mutate(z = gsub("\\s*\\([^\\)]+\\)", "", data_value)) %>% #remove everything in parentheses
+    mutate(z = as.numeric(as.character(gsub("−", "-", z)))) %>% #replace wrong minus sign
+    mutate(y = case_when(str_detect(data_key,"F\\)") == TRUE ~ z*1.8+32,
+                         str_detect(data_key,"mm \\(inches\\)") == TRUE ~ z*.0393701,
+                         str_detect(data_key,"cm \\(inches\\)") == TRUE ~ z*.393701,
+                         TRUE ~ z)) %>%
+    mutate(y = round(y,4)) %>% 
+    mutate(data_value = y) %>% 
+    select(-z,-y) %>% 
+    mutate(data_key = tolower(data_key)) %>% 
+    filter(!str_detect(data_key,"record high humidex")) %>% 
+    filter(!str_detect(data_key,"record low wind chill")) %>% 
+    mutate(key = case_when(str_detect(data_key,"record high") == TRUE ~ "temp_high_rec",
+                           str_detect(data_key,"record low") == TRUE ~ "temp_low_rec",
+                           str_detect(data_key,"average high") == TRUE ~ "temp_high_avg",
+                           str_detect(data_key,"average low") == TRUE ~ "temp_low_avg",
+                           str_detect(data_key,"daily mean") == TRUE ~ "temp_avg",
+                           str_detect(data_key,"precipitation days") == TRUE ~ "percip_days",
+                           str_detect(data_key,"precipitation") == TRUE ~ "precip",
+                           str_detect(data_key,"rainfall") == TRUE ~ "rain",
+                           str_detect(data_key,"snowfall") == TRUE ~ "snow",
+                           str_detect(data_key,"mean monthly sunshine") == TRUE ~ "sun")) %>% 
+    mutate(data_key = key) %>% 
+    select(-key) %>% 
+    filter(!is.na(data_key)) %>% 
+    mutate(month = factor(month, levels = month.abb)) %>% 
+    filter(!(data_key == "rain" & data_value == 0)) 
+
+
+temps <- climate_data %>% 
+    select(-lat, -lon) %>% 
+    filter(str_detect(data_key,"temp")) %>% 
+    spread(data_key, data_value) %>% 
+    mutate(temp_high_rec = round(temp_high_rec,0),
+                        temp_low_rec = round(temp_low_rec,0),
+                        temp_high_avg = round(temp_high_avg,0),
+                        temp_low_avg = round(temp_low_avg,0)) %>% 
+    mutate(month = factor(month, levels = month.abb))
+
+precip <- climate_data %>% 
+    select(-lat, -lon) %>% 
+    filter(str_detect(data_key,paste(c("snow","rain","precip"),collapse = "|"))) %>% 
+    replace_na(list(data_value = 0))
+
+sun <- climate_data %>% 
+    filter(str_detect(data_key,"sun")) %>% 
+    select(-lat, -lon) %>% 
+    spread(data_key, data_value) %>% 
+    mutate(night = case_when(month == "Jan" ~ (31*24)-sun,
+                             month == "Feb" ~ (28*24)-sun,
+                             month == "Mar" ~ (31*24)-sun,
+                             month == "Apr" ~ (30*24)-sun,
+                             month == "May" ~ (31*24)-sun,
+                             month == "Jun" ~ (30*24)-sun,
+                             month == "Jul" ~ (31*24)-sun,
+                             month == "Aug" ~ (31*24)-sun,
+                             month == "Sep" ~ (30*24)-sun,
+                             month == "Oct" ~ (31*24)-sun,
+                             month == "Nov" ~ (30*24)-sun,
+                             month == "Dec" ~ (31*24)-sun)) %>% 
+    gather(data_key, data_value, -location, -month)
+
+geo <- climate_data %>% 
+    distinct(location, lat, lon) 
+
+write_csv(temps, "weather_comp/temps.csv")
+write_csv(precip, "weather_comp/precip.csv")
+write_csv(sun, "weather_comp/sun.csv")
+write_csv(geo, "weather_comp/geo.csv")
+```
+
+
+```{r temp_plot}
+ext1 <- temps %>% filter(location == "Aberdeen, United Kingdom")
+ext2 <- temps %>% filter(location == "Mecca, Saudi Arabia")
+
+temp_max = max(max(ext1$temp_high_rec), max(ext2$temp_high_rec))
+temp_min = min(min(ext1$temp_low_rec), min(ext2$temp_low_rec))
+
+ggplot(ext2, aes(x=month)) + 
+    geom_hline(yintercept = 32, color = "#D9D1C7") +
+    
+    geom_point(aes(y=temp_high_rec), size=9, color = "#CD2C24") + 
+    geom_line(aes(y=temp_high_rec), group =1, color = "#CD2C24") +
+    geom_text(aes(y=temp_high_rec, label=temp_high_rec), color = "white", size = 3.3) +
+    
+    geom_point(aes(y=temp_high_avg), size=9, color = "#F2594B") + 
+    geom_line(aes(y=temp_high_avg), group =1, color = "#F2594B") +
+    geom_text(aes(y=temp_high_avg, label=temp_high_avg), color = "white", size = 3.3) +
+    
+    geom_point(aes(y=temp_low_avg), size=9, color = "#3498DB") + 
+    geom_line(aes(y=temp_low_avg), group =1, color = "#3498DB") +
+    geom_text(aes(y=temp_low_avg, label=temp_low_avg), color = "white", size = 3.3) +
+    
+    geom_point(aes(y=temp_low_rec), size=9, color = "#2C3E50") + 
+    geom_line(aes(y=temp_low_rec), group =1, color = "#2C3E50") +
+    geom_text(aes(y=temp_low_rec, label=temp_low_rec), color = "white", size = 3.3) +
+    
+    scale_y_continuous(limits = c(temp_min, temp_max)) +
+    
+    labs(y = "Temperature (F)", x = "Month") +
+    
+    theme_minimal()
+```
+
+```{r sun_plot}
+exs1 <- sun %>% filter(location == "Aberdeen, United Kingdom")
+exs2 <- sun %>% filter(location == "Albuquerque, United States")
+
+ggplot(exs2, aes(month, data_value, fill=data_key)) + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = c("#004358","#FFE11A"), name = "Time") +
+    labs(y = "Average Sunshine (Hours)", x = "Month") +
+    theme_minimal()
+
+```
+
+
+```{r percip_plot}
+exp1 <- precip %>% filter(location == "Charlottetown, Canada")
+exp2 <- precip %>% filter(location == "Eureka, Canada")
+
+ggplot(exp1, aes(month, data_value, fill=data_key)) + 
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_manual(values = c("#225378","#1695A3","#ACF0F2"), name = "Type") +
+    labs(y = "Precipitation (Inches)", x = "Month") +
+    theme_minimal()
+
+```
+
+
+```{r geo_plot}
+
+exgeo1 <- cities_lat %>% filter(location == "Raleigh, North Carolina, United States")
+
+global <- map_data("world")
+
+ggplot() + geom_polygon(data = global, aes(x=long, y = lat, group = group), fill = "#2C3E50") +
+    geom_point(data=exgeo1, aes(lon, lat), color = "#CD2C24", size=3, shape = 25, fill = "#CD2C24") +
+    labs(x="", y="") +
+    theme_minimal() +
+    theme(axis.text.x=element_blank(), axis.text.y=element_blank())
+
+```
+
+
+
