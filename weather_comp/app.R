@@ -19,8 +19,8 @@ global <- map_data("world")
 
 ui <- function(request) {
     fluidPage(
-        fluidRow(column(6, selectizeInput("city1", "City 1", choices = unique(temp$location), selected = "Charlotte, NC, United States")),
-                 column(6, selectizeInput("city2", "City 2", choices = unique(temp$location), selected = "Yellowknife, Nortwest Territories, Canada"))
+        fluidRow(column(6, selectizeInput("city1", "City 1", choices = unique(temp$location), selected = "Charlotte, North Carolina, United States")),
+                 column(6, selectizeInput("city2", "City 2", choices = unique(temp$location), selected = "Yellowknife, Northwest Territories, Canada"))
                  ),
 
         fluidRow(column(6, plotOutput("temp1")),

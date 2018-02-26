@@ -1,57 +1,85 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Weather Comparison"
 ---
 
-```{r}
-library(rvest)
-library(XML)
-library(tidyverse)
-library(stringr)
-library(measurements)
+# Overview
+
+> Some place warm... a little place called Aspen.
+
+Anyone dreaming of moving or travelling has probably thought about how different the weather is in an exotic location compared to your current home. One of the quickest resources for this comparison is Wikipedia. On the page for most every city there is a handy climate table that summarizes average temperatures, precipitation, sunlight, and extremes in weather. I often found myself with two or more of these pages open and going back and forth comparing the data. That's when I had an idea: why not crate an app that let's me compare the climate of two cities side by side.
+
+When I firsted started to work on this project, I went looking for official weather data from resources such as the NOAA. However, this turned out to be more complicated than I initially thought and would have required downloading enormous amounts of data from many data sources. 
+
+That's when I thought: if Wikipedia has already done this work for me, then why not use it? So I decided to simply scrape the data from Wikipedia (note: not every climate table has every data variable we will end up plotting). The process from start to finish then was as follows:
+
+1. Scrape a list of urls for many cities
+2. Add latitude and longitude to the list
+3. Use Python to scrape the tables using the climate tables
+4. Munge the scraped data
+5. Build a shiny app.
+
+Ultimately we will be graphing 4 items:
+1. Temperature (monthly): record high, average high, average low, record low
+2. Precipitation (monthly average): snow, rain, precipitation as available (not every table has each one of these)
+3. Sunshine hours (monthly average)
+4. Geographic location on a world map
+
+```{r init}
+library(tidyverse) #for everything
+library(stringr) #for str_detect
+library(rvest) #for web scraping
+library(XML) #for web 
 
 setwd("~/github/weather")
 ```
 
-Sources for lists of cities
 
+# Scrape List of Cities
 
-https://en.wikipedia.org/wiki/List_of_largest_cities
+The first step is to get a list of cities, their latitude and longitude, and link to their wikipedia page. 
 
-https://en.wikipedia.org/wiki/List_of_United_States_cities_by_population
+We will be getting links to cities from three resources:
+1. List of cities by latitude
+2. List of US state capitals
+3. List of World capitals (we use world capitals by elevation because the world capitals by population is not formatted in a way that is easily read by `html_table`)
 
-https://en.wikipedia.org/wiki/List_of_European_cities_by_population_within_city_limits
+## Getting Raw Links
 
-https://en.wikipedia.org/wiki/List_of_countries_by_national_capital,_largest_and_second-largest_cities
+After specifying the url for the table we want, we use the `html_nodes` from `rvest` to traverse the tables looking for the links we need to extract. The `td:nth-child(3) a` part specifies the column of the cities (here it is the 3rd column). 
 
+## Converting Latitude and Longitude
 
-# Get List of Cities
+Decimal Degrees = Degrees + Minutes/60
 
 ```{r cities_lat}
-#https://dataorchid.wordpress.com/2015/06/14/web-scrapping-using-rvest-package-of-r/
+# inspired by
+# https://dataorchid.wordpress.com/2015/06/14/web-scrapping-using-rvest-package-of-r/
 
 #url for cities by latitude
 url <- "https://en.wikipedia.org/wiki/List_of_population_centers_by_latitude"
 
+# traverse the table for the city links
 raw_links <- read_html(url) %>% 
     html_node("table") %>%
     html_nodes("tr") %>% 
     html_nodes("td:nth-child(3) a") %>% #just the city column
     html_attr("href")
 
+# format as a wikipedia link
 wiki_links <- as.data.frame(raw_links) %>% 
-    distinct(raw_links) %>% 
-    mutate(link = paste("https://en.wikipedia.org",raw_links,sep="")) %>% 
-    mutate(wiki_city = substr(raw_links, 7, 100)) %>% 
+    distinct(raw_links) %>% #keep unique links
+    mutate(link = paste("https://en.wikipedia.org",raw_links,sep="")) %>% #combine to make wikipedia url
+    mutate(wiki_city = substr(raw_links, 7, 100)) %>% #get the name of the city from the end of the url
     select(wiki_city, link)
 
+# format table and coordinates
 cities_lat <- read_html(url) %>% 
     html_node("table") %>%
-    html_table() %>% 
-    cbind(wiki_links) %>% 
-    mutate(location = paste(City, `Province/State`, Country, sep = ", ")) %>% 
+    html_table() %>% # extract text from the city tables
+    cbind(wiki_links) %>% # combine with the links
+    mutate(location = paste(City, `Province/State`, Country, sep = ", ")) %>% # create the location name
     rename(lat = Latitude, lon = Longitude) %>%
-    filter(location!="Ålesund") %>% 
+    filter(location!="Ålesund") %>% # remove because lat/lon is in wrong format
     mutate(x = lat,
            y = lon,
            lat = trimws(gsub('[^0-9]',' ',lat)),
@@ -61,29 +89,34 @@ cities_lat <- read_html(url) %>%
     mutate(lat = as.numeric(lat_deg) + as.numeric(lat_min)/60,
            lon = as.numeric(lon_deg) + as.numeric(lon_min)/60,
            lat = case_when(str_detect(x,"S")==TRUE ~ lat*-1, TRUE ~ lat),
-           lon = case_when(str_detect(y,"W")==TRUE ~ lon*-1, TRUE ~ lon)) %>% 
+           lon = case_when(str_detect(y,"W")==TRUE ~ lon*-1, TRUE ~ lon)) %>% # convert lat/lon from DMS to degrees
     select(location, lat, lon, link) %>% 
     mutate(location = gsub("N/A, ", "", location))
 
 ```
 
 ```{r cities_us_capitals}
-#url for cities by latitude
+#url for us capital
 url1 <- "https://en.wikipedia.org/wiki/List_of_capitals_in_the_United_States"
+
+#url of coordinates
 url2 <- "https://www.jetpunk.com/data/countries/united-states/state-capitals-list"
 
+#get city links
 raw_links <- read_html(url1) %>% 
     html_node("table") %>%
     html_nodes("tr") %>% 
     html_nodes("td:nth-child(4) a") %>% #just the city column
     html_attr("href")
 
+# generate wikipedia links
 wiki_links <- as.data.frame(raw_links) %>% 
     distinct(raw_links) %>% 
     mutate(link = paste("https://en.wikipedia.org",raw_links,sep="")) %>% 
     mutate(wiki_city = substr(raw_links, 7, 100)) %>% 
     select(wiki_city, link)
 
+# get list of us capital coordinates
 us_capitals <- read_html(url2) %>% 
     html_node("table") %>%
     html_table() %>% 
@@ -91,6 +124,7 @@ us_capitals <- read_html(url2) %>%
 
 us_capitals$country <- "United States"
 
+# combine coordinates and us capital names and links
 us_capitals %<>% mutate(location = paste(Capital, State, country, sep = ", ")) %>% 
     rename(lat = Latitude, lon = Longitude) %>% 
     select(location, lat, lon, link)
@@ -98,14 +132,19 @@ us_capitals %<>% mutate(location = paste(Capital, State, country, sep = ", ")) %
 ```
 
 ```{r cities_world_capitals}
+#url for world capital
 url <- "https://en.wikipedia.org/wiki/List_of_capital_cities_by_elevation"
+#url for the coordinates
+url2 <- "http://www.lab.lmnixon.org/4th/worldcapitals.html"
 
+# get the wikipedia links to the cities
 raw_links <- read_html(url) %>% 
     html_node("table") %>%
     html_nodes("tr") %>% 
     html_nodes("td:nth-child(2) a") %>% #just the city column
     html_attr("href")
 
+# format the links
 wiki_links <- as.data.frame(raw_links) %>% 
     distinct(raw_links) %>% 
     mutate(link = paste("https://en.wikipedia.org",raw_links,sep="")) %>% 
@@ -118,14 +157,13 @@ city_table0 <- read_html(url) %>%
     inner_join(wiki_links, by = c("Capital" = "wiki_city"))
 
 #add coordinates
-url2 <- "http://www.lab.lmnixon.org/4th/worldcapitals.html"
 world_capitals <- read_html(url2) %>% 
     html_node("table") %>% 
     html_table(header = TRUE) %>% 
     inner_join(city_table0, by = c("Country" = "Country")) %>% 
     select(Country, Capital.x, Latitude, Longitude, link) %>% 
     rename(City = Capital.x) %>% 
-    mutate(City = gsub('([A-z]+) .*', '\\1', City)) %>% 
+    mutate(City = gsub('([A-z]+) .*', '\\1', City)) %>% #use first word in city name as that city's name
     rename(lat = Latitude, lon = Longitude) %>% 
     mutate(x = lat,
            y = lon,
@@ -143,11 +181,15 @@ world_capitals <- read_html(url2) %>%
 ```
 
 ```{r combine cities}
-
 city_tables <- rbind(cities_lat, us_capitals, world_capitals) %>% distinct(location, .keep_all = TRUE)
-
 write_csv(city_tables, "city_tables.csv")
 ```
+
+# Scrape Tables
+
+I used python (specifically pandas) to scrape the individual data tables. Why not use R? Because pandas has a function `read_html` that allows you to read a specific table that has matching text. Maybe `rvest` has this somewhere but I couldn't find it.
+
+I used the regular expression `[Rr]ecord [Hh]igh` to find the climate table. This matches the phrase "record high" regardless of capitalization.
 
 ```{python}
 import pandas as pd
@@ -159,8 +201,8 @@ city_links.head()
 #define empty dataframe
 climate_columns = ['Month', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Year','location','lat','lon']
 climate_tables = pd.DataFrame(columns = climate_columns)
-climate_tables
 
+#go through every link, read the table in, 
 for x in range(0,len(city_links)):
     try:
         df = pd.read_html(city_links.loc[x,"link"], match="[Rr]ecord [Hh]igh", encoding = 'str', header = 1)[0].dropna(axis=0, how='any')
@@ -171,32 +213,23 @@ for x in range(0,len(city_links)):
             climate_tables = climate_tables.append(df, ignore_index=True)
     except:
         pass
-climate_tables.head()
 
+#write to csv
 climate_tables.to_csv("climate_tables.csv")
 
 ```
 
 
+# Clean Data
 
-we have good links
-need to selectively extract the right table; use pandas
+Now that we have the table, it's time to clean the data.
 
-
-python
-python
-python
-python
-python
-
---here need to combine multiple files
-
+## Imperial vs Metric
+The climate tables specify data in metric and imperial. However, the order of the reportin varies on the default of that location. In the US, farenheit comes first while in the UK celsius comes first. The same is true for mm/cm and inches. To appropriately convert everything to imperial, we use `str_detect` to detect the order and subset appropriately.
 
 ```{r, message=FALSE}
 climate_table <- read_csv("climate_tables.csv") %>% distinct(location, Month, .keep_all = TRUE) 
-```
 
-```{r}
 climate_data <- climate_table %>% 
     select(-X1, -Year) %>% 
     gather(data_key, data_value, -location, -Month, -lat, -lon) %>% 
@@ -264,24 +297,23 @@ sun <- climate_data %>%
                              month == "Dec" ~ (31*24)-sun)) %>% 
     gather(data_key, data_value, -location, -month)
 
+# geographic data
 geo <- climate_data %>% 
     distinct(location, lat, lon) 
 
+# export to csv to be used in the app
 write_csv(temps, "weather_comp/temps.csv")
 write_csv(precip, "weather_comp/precip.csv")
 write_csv(sun, "weather_comp/sun.csv")
 write_csv(geo, "weather_comp/geo.csv")
 ```
 
+# Visualize Data
 
 ```{r temp_plot}
 ext1 <- temps %>% filter(location == "Aberdeen, United Kingdom")
-ext2 <- temps %>% filter(location == "Mecca, Saudi Arabia")
 
-temp_max = max(max(ext1$temp_high_rec), max(ext2$temp_high_rec))
-temp_min = min(min(ext1$temp_low_rec), min(ext2$temp_low_rec))
-
-ggplot(ext2, aes(x=month)) + 
+ggplot(ext1, aes(x=month)) + 
     geom_hline(yintercept = 32, color = "#D9D1C7") +
     
     geom_point(aes(y=temp_high_rec), size=9, color = "#CD2C24") + 
@@ -309,7 +341,6 @@ ggplot(ext2, aes(x=month)) +
 
 ```{r sun_plot}
 exs1 <- sun %>% filter(location == "Aberdeen, United Kingdom")
-exs2 <- sun %>% filter(location == "Albuquerque, United States")
 
 ggplot(exs2, aes(month, data_value, fill=data_key)) + 
     geom_bar(stat = "identity") +
@@ -322,7 +353,6 @@ ggplot(exs2, aes(month, data_value, fill=data_key)) +
 
 ```{r percip_plot}
 exp1 <- precip %>% filter(location == "Charlottetown, Canada")
-exp2 <- precip %>% filter(location == "Eureka, Canada")
 
 ggplot(exp1, aes(month, data_value, fill=data_key)) + 
     geom_bar(stat = "identity", position = "dodge") +
@@ -348,4 +378,4 @@ ggplot() + geom_polygon(data = global, aes(x=long, y = lat, group = group), fill
 ```
 
 
-
+# Build Shiny App
