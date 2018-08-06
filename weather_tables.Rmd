@@ -277,25 +277,75 @@ temps <- climate_data %>%
 precip <- climate_data %>% 
     select(-lat, -lon) %>% 
     filter(str_detect(data_key,paste(c("snow","rain","precip"),collapse = "|"))) %>% 
-    replace_na(list(data_value = 0))
+    replace_na(list(data_value = 0)) %>% 
+    spread(data_key, data_value) %>% 
+    replace_na(list(rain = 0, snow = 0, precip = 0)) %>% 
+    mutate(rain = rain + precip) %>% 
+    select(-precip) %>% 
+    gather(data_key, data_value, -location, -month)
+
+
+sun_times_prep <- climate_data %>% 
+    filter(str_detect(data_key,"sun")) %>% 
+    mutate(date = as.Date(paste0("2018-",month,"-15"), "%Y-%b-%d")) %>% 
+    select(date, lat, lon)
+  
+sun_times <- suncalc::getSunlightTimes(data = sun_times_prep, keep = c("night", "sunrise")) %>%
+  mutate(day = night - sunrise, 
+         month = factor(months(as.Date(date), abbreviate = TRUE), levels = month.abb)) %>% 
+  select(lat, lon, day, month)
 
 sun <- climate_data %>% 
     filter(str_detect(data_key,"sun")) %>% 
+    inner_join(sun_times) %>% 
+    distinct(location, month, .keep_all = TRUE) %>% 
+    mutate(day = zoo::na.approx(day,na.rm =FALSE)) %>% 
+    mutate(day = round(day, 0)) %>% 
     select(-lat, -lon) %>% 
     spread(data_key, data_value) %>% 
-    mutate(night = case_when(month == "Jan" ~ (31*24)-sun,
-                             month == "Feb" ~ (28*24)-sun,
-                             month == "Mar" ~ (31*24)-sun,
-                             month == "Apr" ~ (30*24)-sun,
-                             month == "May" ~ (31*24)-sun,
-                             month == "Jun" ~ (30*24)-sun,
-                             month == "Jul" ~ (31*24)-sun,
-                             month == "Aug" ~ (31*24)-sun,
-                             month == "Sep" ~ (30*24)-sun,
-                             month == "Oct" ~ (31*24)-sun,
-                             month == "Nov" ~ (30*24)-sun,
-                             month == "Dec" ~ (31*24)-sun)) %>% 
-    gather(data_key, data_value, -location, -month)
+    mutate(sun_actual_pct = case_when(month == "Jan" ~ sun/(31*24),
+                             month == "Feb" ~ sun/(28*24),
+                             month == "Mar" ~ sun/(31*24),
+                             month == "Apr" ~ sun/(30*24),
+                             month == "May" ~ sun/(31*24),
+                             month == "Jun" ~ sun/(30*24),
+                             month == "Jul" ~ sun/(31*24),
+                             month == "Aug" ~ sun/(31*24),
+                             month == "Sep" ~ sun/(30*24),
+                             month == "Oct" ~ sun/(31*24),
+                             month == "Nov" ~ sun/(30*24),
+                             month == "Dec" ~ sun/(31*24))) %>% 
+        mutate(sun_possible_pct = case_when(month == "Jan" ~ (day*31)/(31*24),
+                             month == "Feb" ~ (day*28)/(28*24),
+                             month == "Mar" ~ (day*31)/(31*24),
+                             month == "Apr" ~ (day*30)/(30*24),
+                             month == "May" ~ (day*31)/(31*24),
+                             month == "Jun" ~ (day*30)/(30*24),
+                             month == "Jul" ~ (day*31)/(31*24),
+                             month == "Aug" ~ (day*31)/(31*24),
+                             month == "Sep" ~ (day*30)/(30*24),
+                             month == "Oct" ~ (day*31)/(31*24),
+                             month == "Nov" ~ (day*30)/(30*24),
+                             month == "Dec" ~ (day*31)/(31*24))) %>% 
+    mutate(pct_night = case_when(month == "Jan" ~ 1-sun_possible_pct,
+                             month == "Feb" ~ 1-sun_possible_pct,
+                             month == "Mar" ~ 1-sun_possible_pct,
+                             month == "Apr" ~ 1-sun_possible_pct,
+                             month == "May" ~ 1-sun_possible_pct,
+                             month == "Jun" ~ 1-sun_possible_pct,
+                             month == "Jul" ~ 1-sun_possible_pct,
+                             month == "Aug" ~ 1-sun_possible_pct,
+                             month == "Sep" ~ 1-sun_possible_pct,
+                             month == "Oct" ~ 1-sun_possible_pct,
+                             month == "Nov" ~ 1-sun_possible_pct,
+                             month == "Dec" ~ 1-sun_possible_pct)) %>% 
+    mutate(cloudy_pct = sun_possible_pct - sun_actual_pct) %>% 
+    gather(data_key, data_value, -location, -month) %>% 
+    filter(data_key %in% c("pct_night", "cloudy_pct", "sun_actual_pct")) %>% 
+    mutate(mon_num = as.character(match(month, month.abb))) %>% 
+    mutate(date = paste0("2018-",mon_num,"-01")) %>% 
+    mutate(date = as.Date(date)) %>% 
+    mutate(data_key = factor(data_key, c("pct_night", "cloudy_pct", "sun_actual_pct"))) 
 
 # geographic data
 geo <- climate_data %>% 

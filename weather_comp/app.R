@@ -15,47 +15,74 @@ temp <- read_csv("temps.csv")
 sun <- read_csv("sun.csv")
 precip <- read_csv("precip.csv")
 geo <- read_csv("geo.csv")
+comfort <- read_csv("comfort.csv")
 global <- map_data("world")
 
 ui <- function(request) {
-    fluidPage(
-        fluidRow(column(6, selectizeInput("city1", "City 1", choices = unique(temp$location), selected = "Charlotte, North Carolina, United States")),
-                 column(6, selectizeInput("city2", "City 2", choices = unique(temp$location), selected = "Yellowknife, Northwest Territories, Canada"))
-                 ),
+    fluidPage(theme = "style.css",
 
-        fluidRow(column(6, plotOutput("temp1")),
-                 column(6, plotOutput("temp2"))
+        titlePanel(title = "", windowTitle = "Weather Compare"),
+
+        fluidRow(column(6,
+                        align = "center",
+                        selectizeInput("city1", "Select City",
+                                       choices = unique(temp$location),
+                                       selected = "Charlotte, North Carolina, United States")),
+                 column(6,
+                        align = "center",
+                        selectizeInput("city2", "Select Comparison City",
+                                       choices = unique(temp$location),
+                                       selected = "Yellowknife, Northwest Territories, Canada"))
         ),
 
-        fluidRow(column(6, plotOutput("precip1")),
-                  column(6, plotOutput("precip2"))
-        ),
-        fluidRow(column(6, plotOutput("sun1")),
-                  column(6, plotOutput("sun2"))
-        ),
 
-        fluidRow(column(6, plotOutput("map1")),
-                 column(6, plotOutput("map2"))
-        )
-    )
+        # Main panel for displaying outputs ----
+        mainPanel(width = 12,
+
+          # Output: Tabset w/ plot, summary, and table ----
+          tabsetPanel(type = "tabs",
+                      tabPanel("Temp",
+                               fluidRow(column(6, style = 'padding:0px', plotOutput("temp1")),
+                                        column(6, style = 'padding:0px', plotOutput("temp2")))
+                              ),
+                      tabPanel("Precip.",
+                               fluidRow(column(6, plotOutput("precip1")),
+                                        column(6, plotOutput("precip2")))
+                               ),
+                      tabPanel("Sun",
+                                fluidRow(column(6, plotOutput("sun1")),
+                                         column(6, plotOutput("sun2")))
+                              ),
+                      tabPanel("Comfort",
+                               fluidRow(column(6, plotOutput("comfort1")),
+                                        column(6, plotOutput("comfort2")))
+                      ),
+                      tabPanel("Map",  fluidRow(column(width = 8,
+                                                       offset = 3,
+                                                       plotOutput("map1"))
+                      ))
+          )
+          # hr(),
+          # print("~~~my disclaimer~~~~")
+        ))
 }
 
 server <- function(input, output, session) {
 
     geo1Data <- reactive({
-        geo %>% filter(location == input$city1)
-    })
-
-    geo2Data <- reactive({
-        geo %>% filter(location == input$city2)
+        geo %>% filter(location %in% c(input$city1, input$city2))
     })
 
     temp1Data <- reactive({
-        temp %>% filter(location == input$city1) %>% mutate(month = factor(month, levels = month.abb))
+        temp %>%
+        filter(location == input$city1) %>%
+        mutate(date = as.Date(paste0("2018-",month,"-01"),"%Y-%b-%d"))
     })
 
     temp2Data <- reactive({
-        temp %>% filter(location == input$city2) %>% mutate(month = factor(month, levels = month.abb))
+      temp %>%
+        filter(location == input$city2) %>%
+        mutate(date = as.Date(paste0("2018-",month,"-01"),"%Y-%b-%d"))
     })
 
     precip1Data <- reactive({
@@ -74,12 +101,32 @@ server <- function(input, output, session) {
         sun %>% filter(location == input$city2) %>% mutate(month = factor(month, levels = month.abb))
     })
 
+    comfort1Data <- reactive({
+      comfort %>% filter(location == input$city1)
+    })
+
+    comfort2Data <- reactive({
+      comfort %>% filter(location == input$city2)
+    })
+
     output$map1 <- renderPlot({
-        ggplot() + geom_polygon(data = global, aes(x=long, y = lat, group = group), fill = "#2C3E50") +
-            geom_point(data=geo1Data(), aes(lon, lat), color = "#CD2C24", size=3, shape = 25, fill = "#CD2C24") +
-            labs(x="", y="") +
-            theme_minimal() +
-            theme(axis.text.x=element_blank(), axis.text.y=element_blank())
+        ggplot() +
+        geom_polygon(data = global, aes(x=long, y = lat, group = group), fill = "#073642") +
+        geom_point(data=geo1Data(),
+                   aes(lon, lat),
+                   color = "#CD2C24",
+                   size=3,
+                   shape = 25,
+                   fill = "#CD2C24") +
+        geom_label(data=geo1Data(),
+                   aes(lon, lat, label = location), nudge_y = 6) +
+        labs(x="", y="") +
+        ggthemes::theme_solarized() %+replace%
+        theme(
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+          axis.text.x=element_blank(),
+          axis.text.y=element_blank())
     })
 
     output$map2 <- renderPlot({
@@ -95,30 +142,38 @@ server <- function(input, output, session) {
         temp_max = max(max(temp1Data()$temp_high_rec), max(temp2Data()$temp_high_rec))
         temp_min = min(min(temp1Data()$temp_low_rec), min(temp2Data()$temp_low_rec))
 
-        ggplot(temp1Data(), aes(x=month)) +
-            geom_hline(yintercept = 32, color = "#D9D1C7") +
+        ggplot(temp1Data(), aes(x = date)) +
+          geom_hline(yintercept = 32, color = "#D9D1C7") +
 
-            geom_point(aes(y=temp_high_rec), size = 9, color = "#CD2C24") +
-            geom_line(aes(y=temp_high_rec), group = 1, color = "#CD2C24") +
-            geom_text(aes(y=temp_high_rec, label=temp_high_rec), color = "white", size = 3.3) +
+          geom_ribbon(aes(ymax = temp_high_rec, ymin = temp_high_avg), fill = "#871528", alpha = 0.2) +
+          geom_ribbon(aes(ymax = temp_high_avg, ymin = temp_low_avg), fill = "#CC211B", alpha = 0.6) +
+          geom_ribbon(aes(ymax = temp_low_avg, ymin = temp_low_rec), fill = "#871528", alpha = 0.2) +
 
-            geom_point(aes(y=temp_high_avg), size = 9, color = "#F2594B") +
-            geom_line(aes(y=temp_high_avg), group = 1, color = "#F2594B") +
-            geom_text(aes(y=temp_high_avg, label=temp_high_avg), color = "white", size = 3.3) +
+          geom_label(aes(date, y = temp_high_rec, label = temp_high_rec, fill = temp_high_rec, color = temp_high_rec), label.size = 0, size = 4.8) +
+          geom_label(aes(date, y = temp_high_avg, label = temp_high_avg, fill = temp_high_avg, color = temp_high_avg), label.size = 0, size = 4.8) +
+          geom_label(aes(date, y = temp_low_avg, label = temp_low_avg, fill = temp_low_avg, color = temp_low_avg), label.size = 0, size = 4.8) +
+          geom_label(aes(date, y = temp_low_rec, label = temp_low_rec, fill = temp_low_rec, color = temp_low_rec), label.size = 0, size = 4.8) +
 
-            geom_point(aes(y=temp_low_avg), size = 9, color = "#3498DB") +
-            geom_line(aes(y=temp_low_avg), group = 1, color = "#3498DB") +
-            geom_text(aes(y=temp_low_avg, label = temp_low_avg), color = "white", size = 3.3) +
+          scale_fill_gradientn(colors = viridis::viridis_pal(option = "magma")(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
+          scale_color_gradientn(colors = viridis::viridis_pal(option = "viridis", direction = -1)(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
 
-            geom_point(aes(y=temp_low_rec), size = 9, color = "#2C3E50") +
-            geom_line(aes(y=temp_low_rec), group = 1, color = "#2C3E50") +
-            geom_text(aes(y=temp_low_rec, label = temp_low_rec), color = "white", size = 3.3) +
+          scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+          scale_y_continuous(limits = c(temp_min, temp_max)) +
+          guides(fill = FALSE, color = FALSE) +
+          ggthemes::theme_solarized() %+replace%
+          theme(
+            panel.border = element_blank(),
+            panel.background = element_blank(),
+            # panel.grid.major = element_blank(),
+            # panel.grid.minor = element_blank(),
+            axis.title.x = element_blank(),
+            axis.text.x = element_text(size = 14),
+            axis.title.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.text.y = element_blank(),
+            axis.line.y = element_blank()
+          )
 
-            scale_y_continuous(limits = c(temp_min, temp_max)) +
-
-            labs(y = "Temperature (F)", x = "Month") +
-
-            theme_minimal()
     })
 
     output$temp2 <- renderPlot({
@@ -126,32 +181,37 @@ server <- function(input, output, session) {
         temp_max = max(max(temp1Data()$temp_high_rec), max(temp2Data()$temp_high_rec))
         temp_min = min(min(temp1Data()$temp_low_rec), min(temp2Data()$temp_low_rec))
 
-        ggplot(temp2Data(), aes(x=month)) +
-            geom_hline(yintercept = 32, color = "#D9D1C7") +
+        ggplot(temp2Data(), aes(x = date)) +
+          geom_hline(yintercept = 32, color = "#D9D1C7") +
+          geom_ribbon(aes(ymax = temp_high_rec, ymin = temp_high_avg), fill = "#871528", alpha = 0.2) +
+          geom_ribbon(aes(ymax = temp_high_avg, ymin = temp_low_avg), fill = "#CC211B", alpha = 0.6) +
+          geom_ribbon(aes(ymax = temp_low_avg, ymin = temp_low_rec), fill = "#871528", alpha = 0.2) +
 
-            geom_point(aes(y=temp_high_rec), size=9, color = "#CD2C24") +
-            geom_line(aes(y=temp_high_rec), group =1, color = "#CD2C24") +
-            geom_text(aes(y=temp_high_rec, label=temp_high_rec), color = "white", size = 3.3) +
+          geom_label(aes(date, y = temp_high_rec, label = temp_high_rec, fill = temp_high_rec, color = temp_high_rec), label.size = 0, size = 4.8) +
+          geom_label(aes(date, y = temp_high_avg, label = temp_high_avg, fill = temp_high_avg, color = temp_high_avg), label.size = 0, size = 4.8) +
+          geom_label(aes(date, y = temp_low_avg, label = temp_low_avg, fill = temp_low_avg, color = temp_low_avg), label.size = 0, size = 4.8) +
+          geom_label(aes(date, y = temp_low_rec, label = temp_low_rec, fill = temp_low_rec, color = temp_low_rec), label.size = 0, size = 4.8) +
 
-            geom_point(aes(y=temp_high_avg), size=9, color = "#F2594B") +
-            geom_line(aes(y=temp_high_avg), group =1, color = "#F2594B") +
-            geom_text(aes(y=temp_high_avg, label=temp_high_avg), color = "white", size = 3.3) +
+          scale_fill_gradientn(colors = viridis::viridis_pal(option = "magma")(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
+          scale_color_gradientn(colors = viridis::viridis_pal(option = "viridis", direction = -1)(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
 
-            geom_point(aes(y=temp_low_avg), size=9, color = "#3498DB") +
-            geom_line(aes(y=temp_low_avg), group =1, color = "#3498DB") +
-            geom_text(aes(y=temp_low_avg, label=temp_low_avg), color = "white", size = 3.3) +
+          scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+          scale_y_continuous(limits = c(temp_min, temp_max)) +
 
-            geom_point(aes(y=temp_low_rec), size=9, color = "#2C3E50") +
-            geom_line(aes(y=temp_low_rec), group =1, color = "#2C3E50") +
-            geom_text(aes(y=temp_low_rec, label=temp_low_rec), color = "white", size = 3.3) +
+          guides(fill = FALSE, color = FALSE) +
 
-            scale_y_continuous(limits = c(temp_min, temp_max)) +
-
-            labs(y = "Temperature (F)", x = "Month") +
-
-            theme_minimal()
+          ggthemes::theme_solarized() %+replace%
+          theme(
+            panel.border = element_blank(),
+            panel.background = element_blank(),
+            axis.title.x = element_blank(),
+            axis.text.x = element_text(size = 14),
+            axis.title.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.text.y = element_blank(),
+            axis.line.y = element_blank()
+          )
     })
-
 
     output$precip1 <- renderPlot({
 
@@ -159,43 +219,150 @@ server <- function(input, output, session) {
 
         ggplot(precip1Data(), aes(month, data_value, fill=data_key)) +
             geom_bar(stat = "identity", position = "dodge") +
-            scale_fill_manual(values = c("#225378","#1695A3","#ACF0F2"), name = "Type") +
+            scale_fill_manual(values = c("#268bd2","#ADD5F7"),
+                              name = "Type",
+                              labels=c("Rain", "Snow")) +
             ylim(0, precip_max) +
             labs(y = "Precipitation (Inches)", x = "Month") +
-            theme_minimal() +
-            theme(legend.position = "bottom")
+            ggthemes::theme_solarized() %+replace%
+            theme(
+              panel.border = element_blank(),
+              panel.background = element_blank(),
+              axis.title.x = element_blank(),
+              axis.text.x = element_text(size = 14),
+              #axis.title.y = element_blank(),
+              #axis.ticks.y = element_blank(),
+              #axis.text.y = element_blank(),
+              axis.line.y = element_blank(),
+              legend.text = element_text(size = 14, color = "#073642"),
+              legend.position = "bottom"
+            )
     })
 
     output$sun1 <- renderPlot({
-        ggplot(sun1Data(), aes(month, data_value, fill=data_key)) +
-            geom_bar(stat = "identity") +
-            scale_fill_manual(values = c("#004358","#FFE11A"), name = "Time") +
-            labs(y = "Average Sunshine (Hours)", x = "Month") +
-            theme_minimal() +
-            theme(legend.position = "bottom")
+
+      ggplot(sun1Data(), aes(x = date)) +
+        geom_area(aes(y = data_value, fill = data_key, alpha = data_key)) +
+        scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+        scale_fill_manual(values = c("#051026", "#93a1a1", "#FCD215"),
+                          name = element_blank(),
+                          labels=c("Night", "Cloudy", "Sunny")) +
+        scale_alpha_manual(values = c(1,0.7,1),guide=F) +
+        ggthemes::theme_solarized() %+replace%
+        theme(
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+          axis.title.x = element_blank(),
+          axis.text.x = element_text(size = 14),
+          axis.title.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.line.y = element_blank(),
+          legend.text = element_text(size = 14, color = "#073642"),
+          legend.position = "bottom"
+        )
+
     })
 
     output$precip2 <- renderPlot({
 
         precip_max = max(max(precip1Data()$data_value), max(precip2Data()$data_value))
+        normalizer = max(precip2Data()$data_value) / max(sun2Data()$data_value)
 
         ggplot(precip2Data(), aes(month, data_value, fill=data_key)) +
             geom_bar(stat = "identity", position = "dodge") +
-            scale_fill_manual(values = c("#225378","#1695A3","#ACF0F2"), name = "Type") +
+            scale_fill_manual(values = c("#268bd2","#ADD5F7"),
+                              name = "Type",
+                              labels=c("Rain", "Snow")) +
             ylim(0, precip_max) +
             labs(y = "Precipitation (Inches)", x = "Month") +
-            theme_minimal() +
-            theme(legend.position = "bottom")
+            ggthemes::theme_solarized() %+replace%
+            theme(
+              panel.border = element_blank(),
+              panel.background = element_blank(),
+              axis.title.x = element_blank(),
+              axis.text.x = element_text(size = 14),
+              axis.title.y = element_blank(),
+              axis.ticks.y = element_blank(),
+              axis.text.y = element_blank(),
+              axis.line.y = element_blank(),
+              legend.text = element_text(size = 14, color = "#073642"),
+              legend.position = "bottom"
+            )
+
+
     })
 
     output$sun2 <- renderPlot({
-        ggplot(sun2Data(), aes(month, data_value, fill=data_key)) +
-            geom_bar(stat = "identity") +
-            scale_fill_manual(values = c("#004358","#FFE11A"), name = "Time") +
-            labs(y = "Average Sunshine (Hours)", x = "Month") +
-            theme_minimal() +
-            theme(legend.position = "bottom")
+      ggplot(sun2Data(), aes(x = date)) +
+        geom_area(aes(y = data_value, fill = data_key, alpha=data_key)) +
+        scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+        scale_fill_manual(values = c("#051026", "#93a1a1", "#FCD215"),
+                          name = element_blank(),
+                          labels=c("Night", "Cloudy", "Sunny")) +
+        scale_alpha_manual(values = c(1,0.7,1),guide=F) +
+        ggthemes::theme_solarized() %+replace%
+        theme(
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+          axis.title.x = element_blank(),
+          axis.text.x = element_text(size = 14),
+          axis.title.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.line.y = element_blank(),
+          legend.text = element_text(size = 14, color = "#073642"),
+          legend.position = "bottom"
+        )
     })
+
+    output$comfort1 <- renderPlot({
+
+      ggTimeSeries::ggplot_calendar_heatmap(comfort1Data(), 'date', 'ci') +
+        scale_fill_gradient2(low = "blue", mid = "green", high = "red",
+                             limits = c(min(comfort$ci), max(comfort$ci)),
+                             na.value = "grey") +
+        guides(fill = FALSE, color = FALSE) +
+        ggthemes::theme_solarized() %+replace%
+        theme(
+          #panel.border = element_rect(color = "#fdf6e3"),
+          #panel.background = element_rect(color = "#fdf6e3"),
+          #plot.background = element_rect(color = "#fdf6e3"),
+          strip.background = element_blank(),
+          strip.text = element_blank(),
+          axis.title.x = element_blank(),
+          axis.text.x = element_text(size = 14),
+          axis.title.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.line.y = element_blank()
+        )
+
+    })
+
+    output$comfort2 <- renderPlot({
+
+      ggTimeSeries::ggplot_calendar_heatmap(comfort2Data(), 'date', 'ci') +
+        scale_fill_gradient2(low = "blue", mid = "green", high = "red",
+                             midpoint = 0,
+                             na.value = "grey") +
+        guides(fill = FALSE, color = FALSE) +
+        ggthemes::theme_solarized() %+replace%
+        theme(
+          panel.border = element_blank(),
+          panel.background = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank(),
+          axis.title.x = element_blank(),
+          axis.text.x = element_text(size = 14),
+          axis.title.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.line.y = element_blank()
+        )
+
+    })
+
 }
 # Run the application
 shinyApp(ui = ui, server = server)
