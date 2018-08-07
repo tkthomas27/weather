@@ -1,10 +1,19 @@
 
-body{background:#fdf6e3}
+body{background:#fdf6e3;
+color: #073642 !important;}
 
 /*https://stackoverflow.com/questions/35025145/background-color-of-tabs-in-shiny-tabpanel*/
 .tabbable > .nav > li > a                  {background-color: aqua;  color:black}
 .tabbable > .nav > li > a[data-value='Temp'] {background-color: #dc322f;   color:white}
 .tabbable > .nav > li > a[data-value='Precip.'] {background-color: #268bd2;  color:white}
 .tabbable > .nav > li > a[data-value='Sun'] {background-color: #FCD215; color:#051026}
-.tabbable > .nav > li > a[data-value='Map'] {background-color: #073642; color:white}
+.tabbable > .nav > li > a[data-value='Map'] {background-color: #d33682; color:white}
 .tabbable > .nav > li > a[data-value='Comfort'] {background-color: #859900; color:white}
+.tabbable > .nav > li > a[data-value='Clusters'] {background-color: #6c71c4; color:white}
+.tabbable > .nav > li > a[data-value='Notes'] {background-color: #586e75; color:white}
+.tabbable > .nav > li > a[data-value='Records'] {background-color: #073642; color:white}
+
+.selectize-input {
+	background:#fdf6e3 !important;
+	color: #073642 !important;
+}

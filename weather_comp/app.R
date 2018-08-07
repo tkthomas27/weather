@@ -10,12 +10,18 @@
 library(shiny)
 library(tidyverse)
 library(maps)
+library(viridis)
+library(dichromat)
+library(scales)
+library(ggTimeSeries)
+library(plotly)
 
 temp <- read_csv("temps.csv")
 sun <- read_csv("sun.csv")
 precip <- read_csv("precip.csv")
 geo <- read_csv("geo.csv")
 comfort <- read_csv("comfort.csv")
+cluster <- read_csv("cluster.csv")
 global <- map_data("world")
 
 ui <- function(request) {
@@ -57,10 +63,19 @@ ui <- function(request) {
                                fluidRow(column(6, plotOutput("comfort1")),
                                         column(6, plotOutput("comfort2")))
                       ),
+                      tabPanel("Clusters",
+                               fluidRow(column(12, plotlyOutput("clusterChart", width = "80%")))
+                      ),
                       tabPanel("Map",  fluidRow(column(width = 8,
                                                        offset = 3,
-                                                       plotOutput("map1"))
-                      ))
+                                                       plotOutput("map1", width = "600px"))
+                      )),
+                      tabPanel("Records",
+                               includeMarkdown("records.md")
+                      ),
+                      tabPanel("Notes",
+                               includeMarkdown("notes.md")
+                      )
           )
           # hr(),
           # print("~~~my disclaimer~~~~")
@@ -68,6 +83,8 @@ ui <- function(request) {
 }
 
 server <- function(input, output, session) {
+
+    #################################################################################
 
     geo1Data <- reactive({
         geo %>% filter(location %in% c(input$city1, input$city2))
@@ -109,13 +126,19 @@ server <- function(input, output, session) {
       comfort %>% filter(location == input$city2)
     })
 
+    clusterData <- reactive({
+        cluster %>% filter(location %in% c(input$city1, input$city2))
+    })
+
+    #################################################################################
+
     output$map1 <- renderPlot({
         ggplot() +
         geom_polygon(data = global, aes(x=long, y = lat, group = group), fill = "#073642") +
         geom_point(data=geo1Data(),
                    aes(lon, lat),
                    color = "#CD2C24",
-                   size=3,
+                   size = 3,
                    shape = 25,
                    fill = "#CD2C24") +
         geom_label(data=geo1Data(),
@@ -127,14 +150,6 @@ server <- function(input, output, session) {
           panel.background = element_blank(),
           axis.text.x=element_blank(),
           axis.text.y=element_blank())
-    })
-
-    output$map2 <- renderPlot({
-        ggplot() + geom_polygon(data = global, aes(x=long, y = lat, group = group), fill = "#2C3E50") +
-            geom_point(data=geo2Data(), aes(lon, lat), color = "#CD2C24", size=3, shape = 25, fill = "#CD2C24") +
-            labs(x="", y="") +
-            theme_minimal() +
-            theme(axis.text.x=element_blank(), axis.text.y=element_blank())
     })
 
     output$temp1 <- renderPlot({
@@ -157,11 +172,16 @@ server <- function(input, output, session) {
           scale_fill_gradientn(colors = viridis::viridis_pal(option = "magma")(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
           scale_color_gradientn(colors = viridis::viridis_pal(option = "viridis", direction = -1)(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
 
-          scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+          # scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+          scale_x_date(date_labels = "%b", date_breaks = "1 month") +
           scale_y_continuous(limits = c(temp_min, temp_max)) +
           guides(fill = FALSE, color = FALSE) +
+          labs(title = temp1Data()$location,
+               subtitle = "",
+               caption = "Source: Wikipedia") +
           ggthemes::theme_solarized() %+replace%
           theme(
+            plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
             panel.border = element_blank(),
             panel.background = element_blank(),
             # panel.grid.major = element_blank(),
@@ -195,13 +215,18 @@ server <- function(input, output, session) {
           scale_fill_gradientn(colors = viridis::viridis_pal(option = "magma")(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
           scale_color_gradientn(colors = viridis::viridis_pal(option = "viridis", direction = -1)(10), limits=c(temp_min, temp_max), na.value = "#FDE725FF") +
 
-          scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+          scale_x_date(date_labels = "%b", date_breaks = "1 month") +
           scale_y_continuous(limits = c(temp_min, temp_max)) +
 
           guides(fill = FALSE, color = FALSE) +
 
+            labs(title = temp2Data()$location,
+                 subtitle = "",
+                 caption = "Source: Wikipedia") +
+
           ggthemes::theme_solarized() %+replace%
           theme(
+              plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
             panel.border = element_blank(),
             panel.background = element_blank(),
             axis.title.x = element_blank(),
@@ -223,9 +248,14 @@ server <- function(input, output, session) {
                               name = "Type",
                               labels=c("Rain", "Snow")) +
             ylim(0, precip_max) +
-            labs(y = "Precipitation (Inches)", x = "Month") +
+            labs(title = temp1Data()$location,
+                 subtitle = "",
+                 caption = "Source: Wikipedia",
+                 y = "Precipitation (Inches)", x = "Month") +
+
             ggthemes::theme_solarized() %+replace%
             theme(
+                plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
               panel.border = element_blank(),
               panel.background = element_blank(),
               axis.title.x = element_blank(),
@@ -243,13 +273,18 @@ server <- function(input, output, session) {
 
       ggplot(sun1Data(), aes(x = date)) +
         geom_area(aes(y = data_value, fill = data_key, alpha = data_key)) +
-        scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+        # scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+        scale_x_date(date_labels = "%b", date_breaks = "1 month") +
         scale_fill_manual(values = c("#051026", "#93a1a1", "#FCD215"),
                           name = element_blank(),
                           labels=c("Night", "Cloudy", "Sunny")) +
         scale_alpha_manual(values = c(1,0.7,1),guide=F) +
+            labs(title = temp1Data()$location,
+                 subtitle = "",
+                 caption = "Source: Wikipedia") +
         ggthemes::theme_solarized() %+replace%
         theme(
+            plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
           panel.border = element_blank(),
           panel.background = element_blank(),
           axis.title.x = element_blank(),
@@ -275,9 +310,13 @@ server <- function(input, output, session) {
                               name = "Type",
                               labels=c("Rain", "Snow")) +
             ylim(0, precip_max) +
-            labs(y = "Precipitation (Inches)", x = "Month") +
+            labs(title = temp2Data()$location,
+                 subtitle = "",
+                 caption = "Source: Wikipedia",
+                 y = "Precipitation (Inches)", x = "Month") +
             ggthemes::theme_solarized() %+replace%
             theme(
+                plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
               panel.border = element_blank(),
               panel.background = element_blank(),
               axis.title.x = element_blank(),
@@ -296,13 +335,18 @@ server <- function(input, output, session) {
     output$sun2 <- renderPlot({
       ggplot(sun2Data(), aes(x = date)) +
         geom_area(aes(y = data_value, fill = data_key, alpha=data_key)) +
-        scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+        # scale_x_date(labels = scales::date_format("%b"), breaks = scales::date_breaks("months")) +
+        scale_x_date(date_labels = "%b", date_breaks = "1 month") +
         scale_fill_manual(values = c("#051026", "#93a1a1", "#FCD215"),
                           name = element_blank(),
                           labels=c("Night", "Cloudy", "Sunny")) +
         scale_alpha_manual(values = c(1,0.7,1),guide=F) +
+            labs(title = temp2Data()$location,
+                 subtitle = "",
+                 caption = "Source: Wikipedia") +
         ggthemes::theme_solarized() %+replace%
         theme(
+            plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
           panel.border = element_blank(),
           panel.background = element_blank(),
           axis.title.x = element_blank(),
@@ -323,8 +367,11 @@ server <- function(input, output, session) {
                              limits = c(min(comfort$ci), max(comfort$ci)),
                              na.value = "grey") +
         guides(fill = FALSE, color = FALSE) +
+            labs(title = temp1Data()$location,
+                 subtitle = "") +
         ggthemes::theme_solarized() %+replace%
         theme(
+            plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
           #panel.border = element_rect(color = "#fdf6e3"),
           #panel.background = element_rect(color = "#fdf6e3"),
           #plot.background = element_rect(color = "#fdf6e3"),
@@ -347,8 +394,11 @@ server <- function(input, output, session) {
                              midpoint = 0,
                              na.value = "grey") +
         guides(fill = FALSE, color = FALSE) +
+            labs(title = temp2Data()$location,
+                 subtitle = "") +
         ggthemes::theme_solarized() %+replace%
         theme(
+            plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
           panel.border = element_blank(),
           panel.background = element_blank(),
           strip.background = element_blank(),
@@ -361,6 +411,32 @@ server <- function(input, output, session) {
           axis.line.y = element_blank()
         )
 
+    })
+
+    output$clusterChart <- renderPlotly({
+        plot_ly(data = cluster,
+                x = ~precip,
+                y = ~avg_temp,
+                color = ~cluster,
+                colors = c("#268bd2", "#073642", "#859900", "#d33682", "#cb4b16"),
+                text = ~location,
+                hoverinfo = 'text',
+                type = "scatter",
+                mode = "markers") %>%
+            layout(yaxis = list(title = "Temp -->",
+                                showticklabels = FALSE),
+                   xaxis = list(title = "Precipitation -->",
+                                showticklabels = FALSE),
+                   plot_bgcolor = "#fdf6e3",
+                   paper_bgcolor = "#fdf6e3",
+                   annotations = list(x = clusterData()$precip,
+                                      y = clusterData()$avg_temp,
+                                      text = clusterData()$location,
+                                      # bordercolor='#c7c7c7',
+                                      borderwidth=0,
+                                      borderpad=2,
+                                      bgcolor="white",
+                                      opacity=0.9))
     })
 
 }

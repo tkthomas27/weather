@@ -358,6 +358,44 @@ write_csv(sun, "weather_comp/sun.csv")
 write_csv(geo, "weather_comp/geo.csv")
 ```
 
+```{r}
+set.seed(666)
+sun_spread <- sun %>% spread(data_key, data_value)
+precip_spread <- precip %>% spread(data_key, data_value)
+cluster <- temps %>% inner_join(sun_spread) %>% inner_join(precip_spread) %>% 
+      group_by(location) %>% 
+      summarise(low_temp = mean(temp_low_avg),
+                high_temp = mean(temp_high_avg),
+                cloudy = mean(cloudy_pct),
+                rain = sum(rain),
+                snow = sum(snow)) %>% 
+      distinct(location, .keep_all = TRUE) %>% 
+      filter(is.na(cloudy)==FALSE) %>% 
+      mutate_at(vars(-location), funs(scale)) %>% 
+      mutate_at(vars(-location), as.numeric)
+
+c2 <- scale(cluster[-1])
+
+k2 <- kmeans(c2, centers = 5, nstart = 25)
+
+k2_loc <- cluster %>% 
+    mutate(avg_temp = (low_temp + high_temp)/2) %>% 
+    mutate(precip = rain + snow) %>% 
+    mutate(precip = replace(precip, precip > 5, 5))
+
+k2_loc$cluster <- k2$cluster
+k2_loc <- as_tibble(k2_loc) 
+
+k2_loc$cluster = recode(k2_loc$cluster, `3` = "Hot and Wet", 
+                 `2` = "Comfortable", 
+                 `5` = "Cold and Wet", 
+                 `1` = "Cold and Dry", 
+                 `4` = "Hot and Dry")
+
+write_csv(k2_loc, "weather_comp/cluster.csv")
+```
+
+
 # Visualize Data
 
 ```{r temp_plot}
