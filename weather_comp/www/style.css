@@ -1,19 +1,29 @@
 
 body{background:#fdf6e3;
-color: #073642 !important;}
+color: #657b83 !important;}
 
 /*https://stackoverflow.com/questions/35025145/background-color-of-tabs-in-shiny-tabpanel*/
-.tabbable > .nav > li > a                  {background-color: aqua;  color:black}
-.tabbable > .nav > li > a[data-value='Temp'] {background-color: #dc322f;   color:white}
-.tabbable > .nav > li > a[data-value='Precip.'] {background-color: #268bd2;  color:white}
-.tabbable > .nav > li > a[data-value='Sun'] {background-color: #FCD215; color:#051026}
-.tabbable > .nav > li > a[data-value='Map'] {background-color: #d33682; color:white}
-.tabbable > .nav > li > a[data-value='Comfort'] {background-color: #859900; color:white}
-.tabbable > .nav > li > a[data-value='Clusters'] {background-color: #6c71c4; color:white}
-.tabbable > .nav > li > a[data-value='Notes'] {background-color: #586e75; color:white}
-.tabbable > .nav > li > a[data-value='Records'] {background-color: #073642; color:white}
+/*.tabbable > .nav > li > a[data-value='Temp'] {background-color: #dc322f;   color:white}*/
+.tabbable > .nav > li > a[data-value='Temp'] {background-color: #fdf6e3;   color:#dc322f; border-color:#dc322f;}
+.tabbable > .nav > li > a[data-value='Precip.'] {color: #268bd2;  border-color:#268bd2; background-color: #fdf6e3; }
+.tabbable > .nav > li > a[data-value='Sun'] {color: #FCD215; border-color:#FCD215; background-color: #fdf6e3; }
+.tabbable > .nav > li > a[data-value='Map'] {color: #d33682; border-color:#d33682; background-color: #fdf6e3; }
+.tabbable > .nav > li > a[data-value='Comfort'] {color: #859900; border-color:#859900; background-color: #fdf6e3; }
+.tabbable > .nav > li > a[data-value='Clusters'] {color: #6c71c4; border-color:#6c71c4; background-color: #fdf6e3; }
+.tabbable > .nav > li > a[data-value='Notes'] {color: #586e75; border-color:#586e75; background-color: #fdf6e3; }
+.tabbable > .nav > li > a[data-value='Records'] {color: #073642; border-color:#073642; background-color: #fdf6e3; }
 
 .selectize-input {
 	background:#fdf6e3 !important;
 	color: #073642 !important;
 }
+
+.selectize-dropdown-content {
+	background:#fdf6e3 !important;
+	color: #073642 !important;
+}
+
+.item {
+	background:#fdf6e3 !important;
+	color: #073642 !important;
+     }

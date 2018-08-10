@@ -5,8 +5,8 @@ account: kylethomas
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 275348
-bundleId: 1523582
+bundleId: 1523885
 url: https://kylethomas.shinyapps.io/weather_comp/
-when: 1533673765.00892
+when: 1533687843.54791
 asMultiple: FALSE
 asStatic: FALSE

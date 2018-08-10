@@ -15,6 +15,8 @@ library(dichromat)
 library(scales)
 library(ggTimeSeries)
 library(plotly)
+library(shinycssloaders)
+options(spinner.color="#657b83")
 
 temp <- read_csv("temps.csv")
 sun <- read_csv("sun.csv")
@@ -48,27 +50,29 @@ ui <- function(request) {
           # Output: Tabset w/ plot, summary, and table ----
           tabsetPanel(type = "tabs",
                       tabPanel("Temp",
-                               fluidRow(column(6, style = 'padding:0px', plotOutput("temp1")),
-                                        column(6, style = 'padding:0px', plotOutput("temp2")))
+                               fluidRow(column(6, style = 'padding:0px',
+                                               plotOutput("temp1") %>% withSpinner()),
+                                        column(6, style = 'padding:0px',
+                                               plotOutput("temp2") %>% withSpinner()))
                               ),
                       tabPanel("Precip.",
-                               fluidRow(column(6, plotOutput("precip1")),
-                                        column(6, plotOutput("precip2")))
+                               fluidRow(column(6, plotOutput("precip1")%>% withSpinner()),
+                                        column(6, plotOutput("precip2")%>% withSpinner()))
                                ),
                       tabPanel("Sun",
-                                fluidRow(column(6, plotOutput("sun1")),
-                                         column(6, plotOutput("sun2")))
+                                fluidRow(column(6, plotOutput("sun1")%>% withSpinner()),
+                                         column(6, plotOutput("sun2")%>% withSpinner()))
                               ),
                       tabPanel("Comfort",
-                               fluidRow(column(6, plotOutput("comfort1")),
-                                        column(6, plotOutput("comfort2")))
+                               fluidRow(column(6, plotOutput("comfort1")%>% withSpinner()),
+                                        column(6, plotOutput("comfort2")%>% withSpinner()))
                       ),
                       tabPanel("Clusters",
-                               fluidRow(column(12, plotlyOutput("clusterChart", width = "80%")))
+                               fluidRow(column(12, plotlyOutput("clusterChart", width = "80%")%>% withSpinner()))
                       ),
                       tabPanel("Map",  fluidRow(column(width = 8,
                                                        offset = 3,
-                                                       plotOutput("map1", width = "600px"))
+                                                       plotOutput("map1", width = "600px")%>% withSpinner())
                       )),
                       tabPanel("Records",
                                includeMarkdown("records.md")
@@ -178,7 +182,7 @@ server <- function(input, output, session) {
           guides(fill = FALSE, color = FALSE) +
           labs(title = temp1Data()$location,
                subtitle = "",
-               caption = "Source: Wikipedia") +
+               caption = "") +
           ggthemes::theme_solarized() %+replace%
           theme(
             plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
@@ -250,7 +254,7 @@ server <- function(input, output, session) {
             ylim(0, precip_max) +
             labs(title = temp1Data()$location,
                  subtitle = "",
-                 caption = "Source: Wikipedia",
+                 caption = "",
                  y = "Precipitation (Inches)", x = "Month") +
 
             ggthemes::theme_solarized() %+replace%
@@ -281,7 +285,7 @@ server <- function(input, output, session) {
         scale_alpha_manual(values = c(1,0.7,1),guide=F) +
             labs(title = temp1Data()$location,
                  subtitle = "",
-                 caption = "Source: Wikipedia") +
+                 caption = "") +
         ggthemes::theme_solarized() %+replace%
         theme(
             plot.title = element_text(size = 18, face="bold", margin = margin(b = 2)),
@@ -375,6 +379,7 @@ server <- function(input, output, session) {
           #panel.border = element_rect(color = "#fdf6e3"),
           #panel.background = element_rect(color = "#fdf6e3"),
           #plot.background = element_rect(color = "#fdf6e3"),
+          panel.grid = element_line(color = "#fdf6e3"),
           strip.background = element_blank(),
           strip.text = element_blank(),
           axis.title.x = element_blank(),
